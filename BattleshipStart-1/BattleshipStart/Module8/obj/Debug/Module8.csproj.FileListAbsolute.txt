@@ -1,0 +1,8 @@
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\bin\Debug\Module8.exe.config
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\bin\Debug\Module8.exe
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\bin\Debug\Module8.pdb
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\obj\Debug\Module8.csproj.AssemblyReference.cache
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\obj\Debug\Module8.csproj.CoreCompileInputs.cache
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\obj\Debug\Module8.exe
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\obj\Debug\Module8.pdb
+C:\Users\ivanj\Downloads\BattleshipStart-1\BattleshipStart\Module8\obj\Debug\Module8.exe.config
