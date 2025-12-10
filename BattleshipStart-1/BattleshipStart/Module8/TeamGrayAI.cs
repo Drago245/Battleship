@@ -11,6 +11,7 @@ namespace Module8
         private static readonly Random Random = new Random();
         private int _gridSize;
         private bool hitCheckedThisTurn = true;
+        Position lastGuess = null;
 
         public TeamGrayAI(string name)
         {
@@ -107,14 +108,28 @@ namespace Module8
         {
             hitCheckedThisTurn = false;
             Position guess;
+            if (_targetQueue.Count > 0)
+            {
+                Debug.WriteLine("Next up in Queue: " + _targetQueue.Peek().X + ", " + _targetQueue.Peek().Y);
+            }
 
             // If we have positions to target (from a previous hit), use them first
             if (_targetQueue.Count > 0)
             {
                 guess = _targetQueue.Dequeue();
-                // Make sure this guess hasn't already been used
-                if (!Guesses.Contains(guess))
-                    return GetAttackPosition(); // skip invalid positions
+                bool goodGuess = false;
+                // Make sure this guess exists in the target pool FIX THIS, NOT WORKING PROPERLY
+                while (!goodGuess && (_targetQueue.Count > 0))
+                {
+                    if (!Guesses.Contains(guess))
+                    {
+                        goodGuess = true;
+                    }
+                    else
+                    {
+                        guess = _targetQueue.Dequeue();
+                    }
+                }
             }
             else
             {
@@ -123,11 +138,15 @@ namespace Module8
             }
 
             // Remove the guessed position from the shared pool
+            Debug.WriteLine("x: " +guess.X + "  y: " + guess.Y);
+            lastGuess = guess;
+
             Guesses.Remove(guess);
+
+
 
             return guess;
         }
-        int hitnum = 0;
         public void SetAttackResults(List<AttackResult> results)
         {
             if (!hitCheckedThisTurn)
@@ -137,31 +156,38 @@ namespace Module8
                 {
                     if ((result.ResultType == AttackResultType.Hit) && (result.PlayerIndex != Index))
                     {
-                        hitnum++;
-                        Debug.WriteLine("HIT DETECTED: " + hitnum);
-                        AddAdjacentTargets(result.Position);
+                        Debug.WriteLine("HIT DETECTED - Position: " + lastGuess.X + ", " + lastGuess.Y);
+                        AddAdjacentTargets(lastGuess);
                     }
                 }
             }
         }
 
-        private void AddAdjacentTargets(Position pos)
+        private void AddAdjacentTargets(Position lastGuess)
         {
             // Left, Right, Up, Down
+            _targetQueue.Clear();
+
             Position[] adjacent = new Position[]
             {
-                new Position(pos.X + 1, pos.Y),
-                new Position(pos.X - 1, pos.Y),
-                new Position(pos.X, pos.Y - 1),
-                new Position(pos.X, pos.Y + 1)
-            };
+                new Position(lastGuess.X + 1, lastGuess.Y),
+                new Position(lastGuess.X - 1, lastGuess.Y),
+                new Position(lastGuess.X, lastGuess.Y - 1),
+                new Position(lastGuess.X, lastGuess.Y + 1)
+            }; 
+            Debug.WriteLine("Created: " + adjacent[0].X + ", " + adjacent[0].Y);
+            Debug.WriteLine("Created: " + adjacent[1].X + ", " + adjacent[1].Y);
+            Debug.WriteLine("Created: " + adjacent[2].X + ", " + adjacent[2].Y);
+            Debug.WriteLine("Created: " + adjacent[3].X + ", " + adjacent[3].Y);
 
             foreach (var p in adjacent)
             {
-                // Only add valid positions that haven't been guessed yet
-                if (p.X >= 0 && p.X < _gridSize && p.Y >= 0 && p.Y < _gridSize && Guesses.Contains(p))
+                //Only add valid positions, previous use checking will happen in getAttackPosition()
+                if ((p.X >= 0) && (p.X < _gridSize) && (p.Y >= 0) && (p.Y < _gridSize))
                 {
                     _targetQueue.Enqueue(p);
+                    Debug.WriteLine("Added to queue: " + p.X + ", " + p.Y);
+
                 }
             }
         }
