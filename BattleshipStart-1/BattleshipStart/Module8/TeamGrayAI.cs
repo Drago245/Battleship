@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 
 namespace Module8
@@ -9,9 +10,7 @@ namespace Module8
         private int _index;
         private static readonly Random Random = new Random();
         private int _gridSize;
-        private Position lastGuess;
-        private bool lastGuessHit = false;
-        private bool hasGuessedYet = false;
+        private bool hitCheckedThisTurn = true;
 
         public TeamGrayAI(string name)
         {
@@ -34,15 +33,50 @@ namespace Module8
                 availableColumns.Add(i);
             }
 
-            foreach (var ship in ships._ships)  // placing ships
-            {
-                // Choose an X from the set of remaining columns
-                var x = availableColumns[Random.Next(availableColumns.Count)];
-                availableColumns.Remove(x); //Make sure we can't pick it again
+            // 2D array of Boolen values to tell if a position is occupied
+            bool[,] occupied = new bool[gridSize, gridSize];
 
-                // Choose a Y based o nthe ship length and grid size so it always fits
-                var y = Random.Next(gridSize - ship.Length);
-                ship.Place(new Position(x, y), Direction.Vertical);
+            foreach (var ship in ships._ships)
+            {
+                bool placed = false;
+
+                while (!placed)
+                {
+                    bool horizontal = Random.Next(2) == 0;
+                    Direction direction = horizontal ? Direction.Horizontal : Direction.Vertical;
+
+                    // Random start, adjusted so ship fits
+                    int x = horizontal ? Random.Next(gridSize - ship.Length + 1) : Random.Next(gridSize);
+                    int y = horizontal ? Random.Next(gridSize) : Random.Next(gridSize - ship.Length + 1);
+
+                    // Check for overlap
+                    bool collision = false;
+                    for (int i = 0; i < ship.Length; i++)
+                    {
+                        // Current x and y to check
+                        int cx = horizontal ? x + i : x;
+                        int cy = horizontal ? y : y + i;
+                        if (occupied[cx, cy])
+                        {
+                            collision = true;
+                            break;
+                        }
+                    }
+
+                    if (collision) continue;
+
+                    // Mark occupied cells
+                    for (int i = 0; i < ship.Length; i++)
+                    {
+                        int cx = horizontal ? x + i : x;
+                        int cy = horizontal ? y : y + i;
+                        occupied[cx, cy] = true;
+                    }
+
+                    // Place the ship
+                    ship.Place(new Position(x, y), direction);
+                    placed = true;
+                }
             }
         }
 
@@ -52,14 +86,14 @@ namespace Module8
             // So they don't repeat each other.
 
             // We need to populate the guesses list, but not for every instance - so we only do it if the set is missing some guesses
-            if (Guesses.Count < _gridSize*_gridSize)
+            if (Guesses.Count < _gridSize * _gridSize)
             {
                 Guesses.Clear();
                 for (int x = 0; x < _gridSize; x++)
                 {
                     for (int y = 0; y < _gridSize; y++)
                     {
-                        Guesses.Add(new Position(x,y));
+                        Guesses.Add(new Position(x, y));
                     }
                 }
             }
@@ -68,87 +102,68 @@ namespace Module8
         public string Name { get; }
         public int Index => _index;
 
+        private readonly Queue<Position> _targetQueue = new Queue<Position>();
         public Position GetAttackPosition()
         {
-            // TeamGrayAI just guesses random squares. Its smart in that it never repeats a move from any other random 
-            // player since they share the same set of guesses
-            // But it doesn't take into account any other players guesses
-            hasGuessedYet = true;
+            hitCheckedThisTurn = false;
+            Position guess;
 
-
-            if (lastGuessHit) // if the previous guess hit
+            // If we have positions to target (from a previous hit), use them first
+            if (_targetQueue.Count > 0)
             {
-
-                Position subsequentGuess = Guesses.Find(g => g.X == lastGuess.X + 1 && g.Y == lastGuess.Y);
-
-                if (subsequentGuess != null) // Makes sure that there was a valid guess immedietly to the right
-                {
-                    Guesses.Remove(subsequentGuess);
-                    lastGuess = subsequentGuess;
-                    return subsequentGuess;
-                    
-                }
-                else  //  if no guesses remain immedieatly to the right (if the end of the board or already guessed) return to random
-                {
-                    var guess = Guesses[Random.Next(Guesses.Count)];
-                    Guesses.Remove(guess); // Don't use this one again
-                    lastGuess = guess;
-                    return guess;
-                }
+                guess = _targetQueue.Dequeue();
+                // Make sure this guess hasn't already been used
+                if (!Guesses.Contains(guess))
+                    return GetAttackPosition(); // skip invalid positions
             }
-
             else
             {
-                var guess = Guesses[Random.Next(Guesses.Count)];
-                Guesses.Remove(guess); // Don't use this one again
-                lastGuess = guess;
-                return guess;
+                // Otherwise pick a random position
+                guess = Guesses[Random.Next(Guesses.Count)];
+            }
+
+            // Remove the guessed position from the shared pool
+            Guesses.Remove(guess);
+
+            return guess;
+        }
+        int hitnum = 0;
+        public void SetAttackResults(List<AttackResult> results)
+        {
+            if (!hitCheckedThisTurn)
+            {
+                hitCheckedThisTurn = true;
+                foreach (var result in results)
+                {
+                    if ((result.ResultType == AttackResultType.Hit) && (result.PlayerIndex != Index))
+                    {
+                        hitnum++;
+                        Debug.WriteLine("HIT DETECTED: " + hitnum);
+                        AddAdjacentTargets(result.Position);
+                    }
+                }
             }
         }
 
-        public void SetAttackResults(List<AttackResult> results)
+        private void AddAdjacentTargets(Position pos)
         {
-
-            if (!hasGuessedYet)
+            // Left, Right, Up, Down
+            Position[] adjacent = new Position[]
             {
-                return;
-            }
+                new Position(pos.X + 1, pos.Y),
+                new Position(pos.X - 1, pos.Y),
+                new Position(pos.X, pos.Y - 1),
+                new Position(pos.X, pos.Y + 1)
+            };
 
-            AttackResult? currResult = null;
-
-            foreach (var result in results)
+            foreach (var p in adjacent)
             {
-                if (result.PlayerIndex == _index &&  // find the matching location
-                    result.Position.X == lastGuess.X && 
-                    result.Position.Y == lastGuess.Y)
+                // Only add valid positions that haven't been guessed yet
+                if (p.X >= 0 && p.X < _gridSize && p.Y >= 0 && p.Y < _gridSize && Guesses.Contains(p))
                 {
-                    currResult = result; // stop searching once the correct result is found
-                    break;
+                    _targetQueue.Enqueue(p);
                 }
             }
-            //MUST check for result before running, as this may be called before guesses happen
-            if (currResult == null)
-            {
-                return;
-            }
-            
-            switch (currResult.Value.ResultType)
-            {
-                case AttackResultType.Hit:
-                    Console.WriteLine("HEY THIS IS A HIT HEY HEY HEY");
-                    lastGuessHit = true;
-                    break;
-
-                case AttackResultType.Miss:
-                    lastGuessHit = false;
-                    break;
-
-                case AttackResultType.Sank:
-                    lastGuessHit = false;
-                    break;
-            }
-
-
         }
     }
 }
