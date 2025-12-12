@@ -7,6 +7,7 @@ namespace Module8
     internal class TeamGrayAI : IPlayer
     {
         private static readonly List<Position> Guesses = new List<Position>();
+        private static readonly List<Position> FinalGuesses = new List<Position>(); // only guess squares that include our battleship after all other guesses have been made
         private int _index;
         private static readonly Random Random = new Random();
         private int _gridSize;
@@ -34,7 +35,7 @@ namespace Module8
                 availableColumns.Add(i);
             }
 
-            // 2D array of Boolen values to tell if a position is occupied
+            // 2D array of Boolean values to tell if a position is occupied
             bool[,] occupied = new bool[gridSize, gridSize];
 
             foreach (var ship in ships._ships)
@@ -48,7 +49,8 @@ namespace Module8
 
                     // Random start, adjusted so ship fits
                     int x = horizontal ? Random.Next(gridSize - ship.Length + 1) : Random.Next(gridSize);
-                    int y = horizontal ? Random.Next(gridSize) : Random.Next(gridSize - ship.Length + 1);
+                    // Exclude the bottom row for the battleship
+                    int y = horizontal ? Random.Next(gridSize - 1) : Random.Next(gridSize - ship.Length);
 
                     // Check for overlap
                     bool collision = false;
@@ -74,9 +76,32 @@ namespace Module8
                         occupied[cx, cy] = true;
                     }
 
-                    // Place the ship
-                    ship.Place(new Position(x, y), direction);
-                    placed = true;
+                    // Check for battleship
+                    if (ship.IsBattleShip)
+                    {
+                        // Battleship must be on the bottom row
+                        int by = gridSize - 1;
+
+                        // Random X so the ship always fits horizontally
+                        //int bx = Random.Next(gridSize - ship.Length + 1);
+                        int bx = gridSize - 4;
+
+                        // Mark occupied before placing
+                        for (int i = 0; i < ship.Length; i++)
+                        {
+                            occupied[bx + i, by] = true;
+                        }
+
+                        ship.Place(new Position(bx, by), Direction.Horizontal);
+                        placed = true;
+                    }
+
+                    else
+                    {
+                        // Place the ship
+                        ship.Place(new Position(x, y), direction);
+                        placed = true;
+                    }
                 }
             }
         }
@@ -97,6 +122,16 @@ namespace Module8
                         Guesses.Add(new Position(x, y));
                     }
                 }
+                FinalGuesses.Clear();
+                    for (int i = Guesses.Count - 1; i >= 0; i--)
+                    {
+                        if ((Guesses[i].Y == _gridSize - 1) && (Guesses[i].X >= _gridSize - 4) && (Guesses[i].X <= _gridSize - 1))
+                        {
+                            FinalGuesses.Add(Guesses[i]);
+                            Guesses.Remove(Guesses[i]);
+                        
+                        }
+                    }
             }
         }
 
@@ -108,44 +143,36 @@ namespace Module8
         {
             hitCheckedThisTurn = false;
             Position guess;
-            if (_targetQueue.Count > 0)
+            if (Guesses.Count > 0)
             {
-                Debug.WriteLine("Next up in Queue: " + _targetQueue.Peek().X + ", " + _targetQueue.Peek().Y);
-            }
-
-            // If we have positions to target (from a previous hit), use them first
-            if (_targetQueue.Count > 0)
-            {
-                guess = _targetQueue.Dequeue();
-                bool goodGuess = false;
-                // Make sure this guess exists in the target pool FIX THIS, NOT WORKING PROPERLY
-                while (!goodGuess && (_targetQueue.Count > 0))
+                while (_targetQueue.Count > 0)
                 {
-                    if (!Guesses.Contains(guess))
+                    Debug.WriteLine("Next up in Queue: " + _targetQueue.Peek().X + ", " + _targetQueue.Peek().Y);
+
+                    // If we have positions to target (from a previous hit), use them first
+                    guess = _targetQueue.Dequeue();
+                    if (Guesses.Contains(guess))
                     {
-                        goodGuess = true;
-                    }
-                    else
-                    {
-                        guess = _targetQueue.Dequeue();
+                        lastGuess = guess;
+                        Guesses.Remove(guess);
+                        return lastGuess;
                     }
                 }
+
+                // Otherwise pick a random position
+                guess = Guesses[Random.Next(Guesses.Count)];
+
+                // Remove the guessed position from the shared pool
+                Debug.WriteLine("x: " + guess.X + "  y: " + guess.Y);
+                lastGuess = guess;
+                Guesses.Remove(guess);
+
+                return lastGuess;
             }
             else
             {
-                // Otherwise pick a random position
-                guess = Guesses[Random.Next(Guesses.Count)];
+                return FinalGuesses[Random.Next(FinalGuesses.Count)]; // Only guess squares containing our battleship after all other options have been exhausted
             }
-
-            // Remove the guessed position from the shared pool
-            Debug.WriteLine("x: " +guess.X + "  y: " + guess.Y);
-            lastGuess = guess;
-
-            Guesses.Remove(guess);
-
-
-
-            return guess;
         }
         public void SetAttackResults(List<AttackResult> results)
         {
@@ -161,33 +188,68 @@ namespace Module8
                     }
                 }
             }
+            else // This removes guesses that other players have guessed. Prevents us from wasting shots on squares that have already been guessed.
+            {
+                foreach (var result in results)
+                {
+                    Debug.WriteLine("Other player shot: " + result.Position.X + ", " + result.Position.Y);
+
+                    Position otherPlayerGuess = result.Position;
+
+                    for (int k = 0; k < Guesses.Count; ++k)
+                    {
+                        Debug.Write(Guesses[k].X + "," + Guesses[k].Y + "|");
+                    }
+                    Debug.WriteLine("");
+
+                    for (int i = 0; i < Guesses.Count; ++i)
+                    {
+                        if ((Guesses[i].X == otherPlayerGuess.X) && (Guesses[i].Y == otherPlayerGuess.Y))
+                        {
+                            Guesses.Remove(Guesses[i]);
+                        }
+                    }
+
+                    Debug.WriteLine("Attempted to remove guess: " + otherPlayerGuess.X + ", " + otherPlayerGuess.Y + " | new guess list:");
+
+                    for (int k = 0; k < Guesses.Count; ++k)
+                    {
+                        Debug.Write(Guesses[k].X + "," + Guesses[k].Y + "|");
+                    }
+                    Debug.WriteLine("");
+                    Debug.WriteLine("Final Guesses list: ");
+                    for (int k = 0; k < FinalGuesses.Count; ++k)
+                    {
+                        Debug.Write(FinalGuesses[k].X + "," + FinalGuesses[k].Y + "|");
+                    }
+                    Debug.WriteLine("");
+                }
+            }
+        }
+
+        private Position FindExisting(int x, int y)
+        {
+            return Guesses.Find(p => p.X == x && p.Y == y);
         }
 
         private void AddAdjacentTargets(Position lastGuess)
         {
             // Left, Right, Up, Down
-            _targetQueue.Clear();
 
-            Position[] adjacent = new Position[]
+            Position[] adjacent =
             {
-                new Position(lastGuess.X + 1, lastGuess.Y),
-                new Position(lastGuess.X - 1, lastGuess.Y),
-                new Position(lastGuess.X, lastGuess.Y - 1),
-                new Position(lastGuess.X, lastGuess.Y + 1)
-            }; 
-            Debug.WriteLine("Created: " + adjacent[0].X + ", " + adjacent[0].Y);
-            Debug.WriteLine("Created: " + adjacent[1].X + ", " + adjacent[1].Y);
-            Debug.WriteLine("Created: " + adjacent[2].X + ", " + adjacent[2].Y);
-            Debug.WriteLine("Created: " + adjacent[3].X + ", " + adjacent[3].Y);
+                FindExisting(lastGuess.X + 1, lastGuess.Y),
+                FindExisting(lastGuess.X - 1, lastGuess.Y),
+                FindExisting(lastGuess.X, lastGuess.Y - 1),
+                FindExisting(lastGuess.X, lastGuess.Y + 1)
+            };
 
-            foreach (var p in adjacent)
+            foreach (var pos in adjacent)
             {
-                //Only add valid positions, previous use checking will happen in getAttackPosition()
-                if ((p.X >= 0) && (p.X < _gridSize) && (p.Y >= 0) && (p.Y < _gridSize))
+                if (pos != null)
                 {
-                    _targetQueue.Enqueue(p);
-                    Debug.WriteLine("Added to queue: " + p.X + ", " + p.Y);
-
+                    // must exist in Guesses or be skipped
+                    _targetQueue.Enqueue(pos);
                 }
             }
         }
